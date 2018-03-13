@@ -14,6 +14,7 @@ function voicewp_fm_alexa_app_settings() {
 			'options' => array(
 				// Key is class name
 				'Quote' => __( 'Fact / Quote', 'voicewp' ),
+				'Explore' => __( 'Explore', 'voicewp' ),
 			),
 			'description' => __( 'What type of functionality is being added?', 'voicewp' ),
 		) ),

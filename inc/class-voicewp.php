@@ -60,7 +60,15 @@ class Voicewp {
 			'callback' => array( $this, 'voicewp_news_request' ),
 			'methods' => array( 'POST', 'GET' ),
 		) );
-		// Endpoint for all other skills
+		
+		// Endpoint for "explore" custom skill
+		register_rest_route( 'voicewp/v1', '/skill/exploreXXX', array(
+			'callback' => 'explore_skill',
+			'methods' => array( 'POST', 'GET' ),
+		) );
+		
+		// Endpoint for all other skills, must use the skill post id, e.g. 681 
+		// in your endpoint URL, not the name.
 		register_rest_route( 'voicewp/v1', '/skill/(?P<id>\d+)', array(
 			'callback' => array( $this, 'voicewp_skill_request' ),
 			'methods' => array( 'POST', 'GET' ),
@@ -195,21 +203,31 @@ class Voicewp {
 	/**
 	 * Figures out what kind of skill is being
 	 * dealt with and dispatches appropriately
+	 * The custom skill should be a class definition in the alexa/skill folder,
+	 * just like 'news' or 'quote'.
+	 * The Skill Type is chosen in a pop-up menu in the interface. It must be identical to the
+	 * class name in the alexa/skill folder, e.g. "news".
 	 *
 	 * @return WP_REST_Response
 	 */
 	public function skill_dispatch( $id, $request, $response ) {
 
-		$skill_type = get_post_meta( $id, 'voicewp_skill_type', true );
+		$skill_type = strtolower(get_post_meta( $id, 'voicewp_skill_type', true ));
 
 		switch ( $skill_type ) {
-			case 'Quote':
+			case 'quote':
 			case 'fact_quote':
 				$quote = new \Alexa\Skill\Quote;
 				$quote->quote_request( $id, $request, $response );
 				break;
 			default:
-				do_action( 'voicewp_custom_skill', $skill_type, $id, $request, $response );
+				$ns = "\\Alexa\\Skill\\{$skill_type}";
+				$custom_skill = new $ns;
+				$custom_skill->skill_request( $request, $response );
+				
+				return new WP_REST_Response( $response->render() );
+
+				//do_action( 'voicewp_custom_skill', $skill_type, $id, $request, $response );
 				break;
 		}
 	}

@@ -107,8 +107,16 @@ class Voicewp_Setup {
 			'posts_per_page' => 5,
 			'tax_query' => array(),
 		);
+
+		// Clear News skill
 		$news = new \Alexa\Skill\News;
 		$news->endpoint_content( $args );
+		
+		// Clear Explore skill, too
+		// How to generalize this?
+		$news = new \Alexa\Skill\Explore;
+		$news->endpoint_content( $args );
+
 	}
 
 	/**
