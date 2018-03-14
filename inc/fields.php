@@ -7,15 +7,25 @@ function voicewp_fm_alexa_app_settings() {
 
 	$post_id = ( isset( $_GET['post'] ) ) ? absint( $_GET['post'] ) : 0;
 
+ 		// Make options list for popup menu	
+ 	$skills = new \Alexa\Skills();
+	$options = array ();
+	foreach ($skills->types as $skill_name => $skill_title) {
+		$options[$skill_name] = __( $skill_title, 'voicewp' );
+	}
+
 	$children = array(
 		new \Fieldmanager_Select( __( 'Skill Type', 'voicewp' ), array(
 			'name' => 'type',
 			'first_empty' => true,
-			'options' => array(
-				// Key is class name
-				'Quote' => __( 'Fact / Quote', 'voicewp' ),
-				'Explore' => __( 'Explore', 'voicewp' ),
-			),
+			'options' => $options,
+
+// 			'options' => array(
+// 				// Key is class name
+// 				'Quote' => __( 'Fact / Quote', 'voicewp' ),
+// 				'Explore' => __( 'Explore', 'voicewp' ),
+// 			),
+
 			'description' => __( 'What type of functionality is being added?', 'voicewp' ),
 		) ),
 		new \Fieldmanager_Media( __( 'Default App Card Image', 'voicewp' ), array(

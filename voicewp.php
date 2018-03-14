@@ -54,6 +54,11 @@ require_once( VOICEWP_PATH . '/inc/taxonomies/class-voicewp-taxonomy.php' );
 require_once( VOICEWP_PATH . '/inc/taxonomies/class-voicewp-briefing-category.php' );
 
 /**
+ * Load class: list of skill in alexa/skill
+ */
+require_once( VOICEWP_PATH . '/inc/class-voicewp-skills.php' );
+
+/**
  * Fieldmanager custom fields
  */
 function voicewp_load_fieldmanager_fields() {

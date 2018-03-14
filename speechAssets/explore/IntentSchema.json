@@ -26,17 +26,6 @@
 			]
 		},
 		{
-			 "name": "ReadPostByID",
-			 "slots": [
-				  {
-						"name": "PostID",
-						"type": "AMAZON.NUMBER"
-				  }
-			 ],
-			 "samples": []
-		},
-
-		{
 			"intent": "AMAZON.StopIntent"
 		},
 		{

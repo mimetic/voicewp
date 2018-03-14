@@ -61,12 +61,6 @@ class Voicewp {
 			'methods' => array( 'POST', 'GET' ),
 		) );
 		
-		// Endpoint for "explore" custom skill
-		register_rest_route( 'voicewp/v1', '/skill/exploreXXX', array(
-			'callback' => 'explore_skill',
-			'methods' => array( 'POST', 'GET' ),
-		) );
-		
 		// Endpoint for all other skills, must use the skill post id, e.g. 681 
 		// in your endpoint URL, not the name.
 		register_rest_route( 'voicewp/v1', '/skill/(?P<id>\d+)', array(

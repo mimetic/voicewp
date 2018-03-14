@@ -115,13 +115,39 @@ class Explore {
 							$this->message( $response, 'number_slot_error', $request );
 						} else {
 							$result = $this->endpoint_single_post( $post_id );
+							$speech = $result['content'];
+							
+							$speech = '<speak>ReadPost. ' . substr($speech, 0, 30) . '<break time="0.25s"/>' . "What about now, my friend?" . '</speak>';
+
+
 							$response
-								->respond_ssml( $result['content'] )
-								->with_card( $result['title'], '', $result['image'] )
-								->end_session();
+								->respond_ssml( $speech )
+								->with_card( $result['title'], '', $result['image'] );
+								// This would end the session!
+								//->end_session();
 						}
 					} else {
 						$this->message( $response );
+					}
+					break;
+					
+				// example: "Read post id {PostID}"
+				case 'ReadPostByID':
+					$post_id = $request->getSlot( 'PostID' );
+					if ( ! $post_id ) {
+						$this->message( $response, 'post_id_error', $request );
+					} else {
+						$result = $this->endpoint_single_post( $post_id );
+						$speech = $result['content'];
+						
+						$speech = '<speak>'. $speech . '<break time="0.25s"/>' . "What next?" . '</speak>';
+
+
+						$response
+							->respond_ssml( $speech )
+							->with_card( $result['title'], '', $result['image'] );
+							// This would end the session!
+							//->end_session();
 					}
 					break;
 				case 'AMAZON.StopIntent':
@@ -196,7 +222,7 @@ class Explore {
 			$post_content = str_ireplace( $dictionary_keys, $dictionary, $post_content );
 		}
 		return array(
-			'content' => sprintf( '<speak>%s</speak>', $post_content ),
+			'content' => $post_content,
 			'title' => $single_post->post_title,
 			'image' => get_post_thumbnail_id( $id ),
 		);
@@ -231,6 +257,9 @@ class Explore {
 			$response
 				->respond( __( 'You can select between one and five, please select an item within that range.', 'voicewp' ) )
 				->add_session_attribute( 'post_ids', $request->session->get_attribute( 'post_ids' ) );
+		} elseif ( 'post_id_error' == $case ) {
+			$response
+				->respond( __( 'I do not have post id ' . $request->getSlot( 'PostID' ) . '.', 'voicewp' ) );
 		} else {
 			$response->respond( __( "Sorry! I couldn't find any news about that topic. Try asking something else!", 'voicewp' ) );
 		}

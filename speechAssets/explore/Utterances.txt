@@ -77,3 +77,4 @@ ReadPost Read the {PostNumberWord} post to me
 ReadPost Reade the {PostNumberWord} article to me
 ReadPost Read the {PostNumberWord} story to me
 ReadPost Read {PostNumberWord} to me
+ReadPostByID Read post id {PostID}
