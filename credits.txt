@@ -1,5 +1,6 @@
 Tom Harrigan - Plugin author
 
+David Gross ( mimetic )
 David Herrera ( dlh01 )
 Sam Turner ( digiltd )
 Chris Scott ( chrisscott )

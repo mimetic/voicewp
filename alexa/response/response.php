@@ -12,6 +12,7 @@ class Response {
 	public $output_speech = null;
 	public $card = null;
 	public $reprompt = null;
+	public $directives = null;
 	public $should_end_session = false;
 
 	public function __construct() {
@@ -106,12 +107,41 @@ class Response {
 		$this->session_attributes[ $key ] = $value;
 	}
 
+
+	/**
+	 * Add a session attribute that will be passed in every requests.
+	 * @param string $key
+	 * @param mixed $value
+	 */
+
+
+	public function with_directives ( $type, $slot_to_elicit ) {
+
+		$this->directives = array ( array (		
+					'type' => $type,
+					'slotToElicit' => $slot_to_elicit,
+					)
+				);
+
+		
+		return $this;
+		
+		$this->directives = new Directives;
+		$this->directives->type = $type;
+		$this->directives->slotToElicit = $slot_to_elicit;
+		return $this;
+	}
+
+
+
+
 	/**
 	 * Return the response as an array for JSON-ification
 	 * @return array
 	 */
 	public function render() {
-		return array(
+		
+		$response = array(
 			'version' => $this->version,
 			'sessionAttributes' => $this->session_attributes,
 			'response' => array(
@@ -119,7 +149,10 @@ class Response {
 				'card' => $this->card ? $this->card->render() : null,
 				'reprompt' => $this->reprompt ? $this->reprompt->render() : null,
 				'shouldEndSession' => $this->should_end_session ? true : false,
+				'directives' => $this->directives ? $this->directives : null,
 			),
 		);
+		return $response;
+		
 	}
 }

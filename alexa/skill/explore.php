@@ -17,10 +17,14 @@ class Explore {
 		'Latest',
 		'LatestTerm',
 		'ReadPost',
+		'ReadPostByID',
 		'AMAZON.StopIntent',
 		'AMAZON.HelpIntent',
 		'AMAZON.CancelIntent',
 	);
+	
+	private $request;
+	private $response;
 
 	/**
 	 * Figures out what kind of intent we're dealing with from the request
@@ -31,7 +35,24 @@ class Explore {
 
 		if ( $request instanceof \Alexa\Request\IntentRequest ) {
 			$intent = $request->intent_name;
+			
+			//$post_id = null;
+			
+			/*
+			$slot = strtolower( sanitize_text_field( $request->getSlot( 'SlotA' ) ) );
+			if ($slot) {
+				$intent = "ReadPostByID";
+				$post_id = 1;
+				//$post_id_list;
+			}
+			*/
+			
+
+			error_log("------- explore::skill_request( $intent ) -------");
+
+			
 			switch ( $intent ) {
+			
 				case 'LatestTerm':
 					$term_slot = strtolower( sanitize_text_field( $request->getSlot( 'TermName' ) ) );
 					$term_slot = apply_filters( 'voicewp_filter_term_slot_result', $term_slot );
@@ -73,6 +94,7 @@ class Explore {
 					 * but this keeps the code DRY
 					 */
 
+					// Search for posts, then return a list of posts for the user to choose from.					
 					$args = array(
 						'post_type' => voicewp_news_post_types(),
 						'posts_per_page' => 5,
@@ -94,7 +116,167 @@ class Explore {
 						->with_card( sprintf( __( 'Latest from %s', 'voicewp' ), $skill_name ), ( ( ! empty( $result['card_content'] ) ) ? $result['card_content'] : '' ) )
 						->add_session_attribute( 'post_ids', $result['ids'] );
 					break;
-				case 'ReadPost':
+					
+					
+				// ========================================
+				// Read a post
+				// Uses dialog to choose criteria: keyword or search term.
+				// If the keyword provided is in the list of tags, then use the session post_ids to
+				// get the post ID. The post_ids come from the last-read post; if this is a new search,
+				// there will not be any post_ids in the session.
+				// If not, use it for text search.
+				// "...posts about {Keyword}"
+				case 'ReadPostByKeyword':
+					
+					// Criteria for search exists?
+					$keyword = strtolower( sanitize_text_field( $request->getSlot( 'Keyword' ) ) );
+					$post_ids = $request->session->attributes['post_ids'];
+
+						error_log("------- ReadPostByKeyword : A -------");
+						error_log( print_r ($request, true) );
+ 
+ 
+					if ( empty($keyword) ) {
+					
+						// Dialog to get the keyword
+						
+						error_log("------- ReadPostByKeyword : B -------");
+						error_log("No keyword, start dialog.");
+						error_log(print_r($post_ids, true));
+ 						
+						$speech = "<speak>Choose a topic.</speak>";
+						$response
+							->respond_ssml( $speech )
+							->with_directives ( 'Dialog.ElicitSlot', 'Keyword')
+							->add_session_attribute('post_ids', $post_ids);
+
+	 				// ========================================					
+ 					// Keyword + List of Posts: use the keyword to choose from the list
+ 					// or if there is no match, do a search.
+					} else if ( $keyword && $post_ids ) {
+
+						// ORDINAL?
+						// Is the keyword an ordinal ('first'), and the user is choosing from the list
+						// with the ordinal?
+						if ($post_number = $this->is_ordinal() ) {
+							$post_id = $post_ids[$post_number];
+							
+						// LIST?
+						} else {
+						
+							// Look for the keyword in the prepared list of posts (related posts)
+							if ($keyword && $post_ids[$keyword] ) {
+								$post_id = $post_ids[$keyword];
+							} else {
+								// Keyword is NOT one of the prepared ones, so we should
+								// search all tags for this keyword.
+								$args = $this->args_for_post_by_tag ( $keyword, $request, $response );
+								$posts = get_posts( array_merge( $args, array(
+									'no_found_rows' => true,
+									'post_status' => 'publish',
+								) ) );
+								
+								// Just get the first post (for now)
+								// TO DO: turn this into a list to choose from?
+								$post = $posts[0];
+								$ids = wp_list_pluck( $posts, 'ID' );
+								$response->add_session_attribute("post_id_list", $ids) ;
+
+								$post_id = $post->ID;
+
+								// For now: error!
+								$this->message( $response, 'unknown_tag_error', $request, $keyword );
+							}
+							
+							
+						}
+
+
+						error_log("------- ReadPostByKeyword : C -------");
+						error_log("next post_id: $post_id");
+						error_log("keyword: $keyword");
+						
+						
+						// Get the post text and the list of related posts to read 
+						if ( ! empty( $post_ids ) && ! empty( $post_number ) ) {
+							$post_id = $this->get_post_id( $post_ids, $post_number );
+							if ( ! $post_id ) {
+								$this->message( $response, 'number_slot_error', $request );
+							} else {
+								$result = $this->endpoint_single_post( $post_id );
+							
+							$content = $result['content'];
+
+							$related = $this->build_related_posts_text ( $post_id, $request, $response );
+
+							$footer = '<break time="0.5s"/>' . $related;
+						
+							$speech = $content . $footer;
+
+
+							$speech = "<speak>{$speech}</speak>";
+							$response
+									->respond_ssml( $speech )
+									->with_card( $result['title'], '', $result['image'] );
+									// This would end the session!
+									//->end_session();
+							}
+						} else {
+							$this->message( $response );
+						}
+
+
+					// Keyword exists, but no list of posts to choose from,
+					// so use the keyword to find the first tagged post.
+					} else {
+						
+						// search all tags for this keyword, get first post found
+						$args = $this->args_for_post_by_tag ( $keyword, 1 );
+						$posts = get_posts( array_merge( $args, array(
+							'no_found_rows' => true,
+							'post_status' => 'publish',
+						) ) );
+						
+						if ($posts) {
+							// Just get the first post (for now)
+							// TO DO: turn this into a list to choose from?
+							$post = $posts[0];
+							$ids = wp_list_pluck( $posts, 'ID' );
+							$response->add_session_attribute("post_id_list", $ids) ;
+
+							$post_id = $post->ID;
+							
+							$content = $result['content'];
+
+							$related = $this->build_related_posts_text ( $post_id, $request, $response );
+
+							$footer = '<break time="0.5s"/>' . $related;
+						
+							$speech = $content . $footer;
+							$speech = "<speak>{$speech}</speak>";
+							$response
+									->respond_ssml( $speech )
+									->with_card( $result['title'], '', $result['image'] );
+									// This would end the session!
+									//->end_session();
+
+						} else {
+
+							// For now: error!
+							$this->message( $response, 'unknown_tag_error', $request, $keyword );
+						}
+						
+
+					}
+					break;
+					
+				// ========================================
+				// "Read the first/second/third/fourth/fifth post"
+				// Used for choosing from a list of posts.
+				case 'ReadPostByNumber':
+				
+					// choose post ID from a list of pasts, based on provided keyword or number,
+					// e.g. "...read the second"
 					if ( $post_number = $request->getSlot( 'PostNumberWord' ) ) {
 						if ( 'second' === $post_number ) {
 							/**
@@ -115,12 +297,45 @@ class Explore {
 							$this->message( $response, 'number_slot_error', $request );
 						} else {
 							$result = $this->endpoint_single_post( $post_id );
-							$speech = $result['content'];
 							
-							$speech = '<speak>ReadPost. ' . substr($speech, 0, 30) . '<break time="0.25s"/>' . "What about now, my friend?" . '</speak>';
+						$content = $result['content'];
 
 
-							$response
+						// Depends on the "Related Posts for WordPress" plugin!
+						$post = get_post($post_id);
+						$related_post_html = rp4wp_children( $post_id, false );
+						// This will extract the paths & shortcodes from the urls
+						preg_match_all("/'https:\/\/thenewreporter.com\/explore\/(.*?)\/'/", $related_post_html, $matches, PREG_PATTERN_ORDER);
+
+						$url = "https://thenewreporter.com/explore/?attachment_id=";
+						$related = "";
+						$pause = '<break time="0.2s"/>';
+						$ids = array();
+						
+						// Build a list from the excerpts, which contain the keyword for the post
+						foreach ($matches[1] as $shortcode) {
+							$page = get_page_by_path( $shortcode, OBJECT, "post" );
+
+							//$content = $content . ", $shortcode : " . $post_id . " keyword=". $page->post_excerpt;
+							$related
+							? $related = $related . " or " . $page->post_excerpt . $pause
+							: $related = $page->post_excerpt . $pause;
+							
+							// Add the ID's as session attributes
+							$ids[$page->post_excerpt] = $page->ID;
+						}
+						
+						$response->add_session_attribute("post_id_list", $ids) ;
+						
+						$related = "Ask me to say more about {$related}?";
+
+						$footer = '<break time="0.5s"/>' . $related;
+						
+						$speech = $content . $footer;
+
+
+						$speech = "<speak>{$speech}</speak>";
+						$response
 								->respond_ssml( $speech )
 								->with_card( $result['title'], '', $result['image'] );
 								// This would end the session!
@@ -131,25 +346,59 @@ class Explore {
 					}
 					break;
 					
+
+				// ==============================
 				// example: "Read post id {PostID}"
 				case 'ReadPostByID':
-					$post_id = $request->getSlot( 'PostID' );
+					$post_id = strtolower( sanitize_text_field( $request->getSlot( 'PostID' ) ) );
+					$keyword = strtolower( sanitize_text_field( $request->getSlot( 'Keyword' ) ) );
+
+					if ($keyword) {
+						// The sessionAttributes have a list of posts
+						$post_ids = $request->session->attributes['post_ids'];
+						$keyword && $post_ids[$keyword] 
+						? $post_id = $post_ids[$keyword] 
+						: $post_id = null;
+
+					// Old concept: get the post ID from the slug, if it exists.
+					/*
+					$slug = strtolower( sanitize_text_field( $request->getSlot( 'Slug' ) ) );
+					if ($slug) {
+						$page = get_page_by_path( $shortcode, OBJECT, "post" );
+						if ($page) {
+							$post_id = $page->ID;
+						}
+					}
+					*/
+
+					
+						error_log("post_id: $post_id");
+						error_log("keyword: $keyword");
+						error_log(print_r($post_ids, true));
+						//error_log(print_r($request->session, true));
+						error_log("-------");
+ 					
+ 						
+ 						if (!$post_id) {
+ 							$speech = "<speak>I don't know about that.</speak>";
+	 						$response
+								->respond_ssml( $speech )
+								->with_directives ( 'Dialog.ElicitSlot', 'Keyword')
+								->add_session_attribute('post_ids', $post_ids);
+							break;
+ 						}
+ 					}
+										
 					if ( ! $post_id ) {
 						$this->message( $response, 'post_id_error', $request );
 					} else {
-						$result = $this->endpoint_single_post( $post_id );
-						$speech = $result['content'];
-						
-						$speech = '<speak>'. $speech . '<break time="0.25s"/>' . "What next?" . '</speak>';
-
-
-						$response
-							->respond_ssml( $speech )
-							->with_card( $result['title'], '', $result['image'] );
-							// This would end the session!
-							//->end_session();
+						$this->set_response_to_post_by_id ( $post_id, $request, $response );						
+						$response->with_directives ( 'Dialog.ElicitSlot', 'Keyword');
 					}
 					break;
+					
+					
+				// ==============================
 				case 'AMAZON.StopIntent':
 				case 'AMAZON.CancelIntent':
 					$this->message( $response, 'stop_intent' );
@@ -166,6 +415,130 @@ class Explore {
 		}
 	}
 
+
+	/**
+	 * Is a string an ordinal, e.g. first, tenth
+	 * @param string $tag text that might be an ordinal
+	 */
+	private function is_ordinal ( $t ) {
+
+		$digith = array('', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth', 'thirteenth', 'fourteenth', 'fiftheenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth');	
+		return array_search( trim(strtolower($t)), $digith);
+	}
+
+	/**
+	 * List of keywords to choose from.
+	 * Speak to user after an article; ask user to choose one.
+	 * @param string $tag name of the tag to search for
+	 * Search for posts with matching tags
+	 */
+	private function build_related_posts_text ( $post_id, $request, $response ) {
+		// Depends on the "Related Posts for WordPress" plugin!
+		$post = get_post($post_id);
+		$related_post_html = rp4wp_children( $post_id, false );
+		// This will extract the paths & shortcodes from the urls
+		preg_match_all("/'https:\/\/thenewreporter.com\/explore\/(.*?)\/'/", $related_post_html, $matches, PREG_PATTERN_ORDER);
+
+		$url = "https://thenewreporter.com/explore/?attachment_id=";
+		$related = "";
+		$pause = '<break time="0.2s"/>';
+		$ids = array();
+		
+		// Build a list from the excerpts, which contain the keyword for the post
+		foreach ($matches[1] as $shortcode) {
+			$page = get_page_by_path( $shortcode, OBJECT, "post" );
+
+			//$content = $content . ", $shortcode : " . $post_id . " keyword=". $page->post_excerpt;
+			$related
+			? $related = $related . " or " . $page->post_excerpt . $pause
+			: $related = $page->post_excerpt . $pause;
+			
+			// Add the ID's as session attributes
+			$ids[$page->post_excerpt] = $page->ID;
+		}
+		
+		$response->add_session_attribute("post_id_list", $ids) ;
+		
+		$related = "Ask me to say more about {$related}?";
+		
+		return $related;
+	}
+
+
+	/**
+	 * Create arguments for get_posts to
+	 * @param string $tag name of the tag to search for
+	 * Search for posts with matching tags
+	 */
+	private function args_for_post_by_tag ( $tag, $posts_per_page = 3 ) {
+
+		$args = [];
+		
+		if ( $tag ) {
+			// taxonomies to search, e.g. tags, categories, etc.
+			$news_taxonomies = voicewp_news_taxonomies();
+
+			if ( $news_taxonomies ) {
+				$terms = get_terms( array(
+					'name' => $tag,
+					'taxonomy' => $news_taxonomies,
+				) );
+
+				if ( $terms ) {
+					// 'term_taxonomy_id' query allows omitting 'taxonomy'.
+					$tax_query = array(
+						'terms' => wp_list_pluck( $terms, 'term_taxonomy_id' ),
+						'field' => 'term_taxonomy_id',
+					);
+				}
+			}
+			
+			// Error
+			if ( ! isset( $tax_query ) ) {
+				$this->message( $response );
+			}
+
+			// Search for posts, then return a list of posts for the user to choose from.					
+			$args = array(
+				'post_type' => voicewp_news_post_types(),
+				'posts_per_page' => 3,
+			);
+
+			if ( isset( $tax_query ) ) {
+				$args['tax_query'] = array( $tax_query );
+			}
+
+		}
+		return $args;
+	}
+
+
+	/**
+	 * Create arguments for get_posts to
+	 * Search body of posts with a search term
+	 * Only search posts with the selected category
+	 * @param string $term text to search for in the post body
+	 */
+	private function find_post_by_term( $term, $category_slug = "voicewp" ) {
+
+		$args = [];
+		
+		if ( $term ) {
+
+			// Search for posts, then return a list of posts for the user to choose from.					
+			$args = array(
+				'category_name'	=> $category_slug,
+				'post_type' => voicewp_news_post_types(),
+				'posts_per_page' => 3,
+				's'	=> $term
+			);
+		}
+		// return the results
+		return $args;
+
+	}
+
+
 	/**
 	 * Handles intents that come from outside the main set of News skill intents
 	 * @param string $intent name of the intent to handle
@@ -179,6 +552,50 @@ class Explore {
 			$voicewp->skill_dispatch( absint( $custom_skill_index[ $intent ] ), $request, $response );
 		}
 	}
+
+
+	/**
+	 * Gets formatted post data given the post ID
+	 * Set the responce from the post information, e.g. text to speak, card info, etc.
+	 * @param int $id ID of post to get data for
+	 * @return array Data from the post being returned
+	 */
+	private function set_response_to_post_by_id ( $post_id , $request, &$response ) {
+
+		$result = $this->endpoint_single_post( $post_id );		
+		$content = $result['content'];
+
+		// Depends on the "Related Posts for WordPress" plugin!
+		$post = get_post($post_id);
+		$related_post_html = rp4wp_children( $post_id, false );
+		// This will extract the paths & shortcodes from the urls
+		preg_match_all("/'https:\/\/thenewreporter.com\/explore\/(.*?)\/'/", $related_post_html, $matches, PREG_PATTERN_ORDER);
+
+		$url = "https://thenewreporter.com/explore/?attachment_id=";
+		$related = array();
+		$pause = '<break time="0.2s"/>';
+	
+		foreach ($matches[1] as $shortcode) {
+			$page = get_page_by_path( $shortcode, OBJECT, "post" );
+			$page->post_excerpt && $related[] = $page->post_excerpt;
+			// Add the ID's as session attributes
+			$ids[strtolower(sanitize_text_field($page->post_excerpt))] = $page->ID;
+		}
+		$related = implode( "$pause or ", $related);
+		$related ? $footer = '<break time="0.5s"/>' . " Ask me to say more about {$related}?" : $footer = "";
+
+		$speech = $content . $footer;
+		
+		$this->speech = $speech;
+
+		$speech = "<speak>{$speech}</speak>";
+		
+		$response
+			->respond_ssml( $speech )
+			->with_card( $result['title'], $content, $result['image'] )
+			->add_session_attribute('post_ids', $ids) ;
+	}
+
 
 	/**
 	 * Gets formatted post data that will be served in the response
@@ -195,6 +612,7 @@ class Explore {
 		}
 		return $result;
 	}
+
 
 	/**
 	 * Packages up the post data that will be served in the response
@@ -249,20 +667,28 @@ class Explore {
 	 * @param AlexaResponse $response
 	 * @param string $case The type of message to return
 	 */
-	private function message( $response, $case = 'missing', $request = false ) {
+	private function message( $response, $case = 'missing', $request = false, $val='' ) {
 		$voicewp_settings = get_option( 'voicewp-settings' );
 		if ( isset( $voicewp_settings[ $case ] ) ) {
 			$response->respond( $voicewp_settings[ $case ] );
+			
 		} elseif ( 'number_slot_error' == $case ) {
 			$response
 				->respond( __( 'You can select between one and five, please select an item within that range.', 'voicewp' ) )
 				->add_session_attribute( 'post_ids', $request->session->get_attribute( 'post_ids' ) );
+
 		} elseif ( 'post_id_error' == $case ) {
 			$response
 				->respond( __( 'I do not have post id ' . $request->getSlot( 'PostID' ) . '.', 'voicewp' ) );
+
+		} elseif ( 'unknown_tag_error' == $case ) {
+			$response
+				->respond( __( 'I cannot find any posts tagged with ' . $val . '.', 'voicewp' ) );
+
 		} else {
 			$response->respond( __( "Sorry! I couldn't find any news about that topic. Try asking something else!", 'voicewp' ) );
 		}
+
 		if ( 'stop_intent' === $case ) {
 			$response->end_session();
 		}

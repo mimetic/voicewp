@@ -19,13 +19,6 @@ function voicewp_fm_alexa_app_settings() {
 			'name' => 'type',
 			'first_empty' => true,
 			'options' => $options,
-
-// 			'options' => array(
-// 				// Key is class name
-// 				'Quote' => __( 'Fact / Quote', 'voicewp' ),
-// 				'Explore' => __( 'Explore', 'voicewp' ),
-// 			),
-
 			'description' => __( 'What type of functionality is being added?', 'voicewp' ),
 		) ),
 		new \Fieldmanager_Media( __( 'Default App Card Image', 'voicewp' ), array(

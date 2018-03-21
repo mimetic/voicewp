@@ -18,6 +18,7 @@ class IntentRequest extends Request {
 		$data = $this->data;
 
 		$this->intent_name = $data['request']['intent']['name'];
+		$this->dialog_state = $data['request']['dialogState'];
 
 		if ( isset( $data['request']['intent']['slots'] ) ) {
 			foreach ( $data['request']['intent']['slots'] as $slot ) {
@@ -42,4 +43,5 @@ class IntentRequest extends Request {
 			return $default;
 		}
 	}
+
 }
