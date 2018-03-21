@@ -17,6 +17,7 @@ class Explore {
 		'Latest',
 		'LatestTerm',
 		'ReadPost',
+		'ReadPostByKeyword',
 		'ReadPostByID',
 		'AMAZON.StopIntent',
 		'AMAZON.HelpIntent',
@@ -114,75 +115,79 @@ class Explore {
 						->respond( $result['content'] . $prompt )
 						/* translators: %s: site title */
 						->with_card( sprintf( __( 'Latest from %s', 'voicewp' ), $skill_name ), ( ( ! empty( $result['card_content'] ) ) ? $result['card_content'] : '' ) )
-						->add_session_attribute( 'post_ids', $result['ids'] );
+						->add_session_attribute( 'post_id_list', $result['ids'] );
 					break;
 					
 					
 				// ========================================
 				// Read a post
 				// Uses dialog to choose criteria: keyword or search term.
-				// If the keyword provided is in the list of tags, then use the session post_ids to
-				// get the post ID. The post_ids come from the last-read post; if this is a new search,
-				// there will not be any post_ids in the session.
+				// If the keyword provided is in the list of tags, then use the session post_id_list to
+				// get the post ID. The post_id_list come from the last-read post; if this is a new search,
+				// there will not be any post_id_list in the session.
 				// If not, use it for text search.
 				// "...posts about {Keyword}"
 				case 'ReadPostByKeyword':
 					
 					// Criteria for search exists?
 					$keyword = strtolower( sanitize_text_field( $request->getSlot( 'Keyword' ) ) );
-					$post_ids = $request->session->attributes['post_ids'];
+					
+					isset($request->session->attributes['post_id_list'])
+					? $post_id_list = $request->session->attributes['post_id_list']
+					: $post_id_list = null;
 
-						error_log("------- ReadPostByKeyword : A -------");
-						error_log( print_r ($request, true) );
- 
- 
 					if ( empty($keyword) ) {
 					
+error_log("------- ReadPostByKeyword : A -------");
+//error_log( print_r ($request, true) );
+error_log("No keyword, start dialog.");
+
+
 						// Dialog to get the keyword
 						
-						error_log("------- ReadPostByKeyword : B -------");
-						error_log("No keyword, start dialog.");
-						error_log(print_r($post_ids, true));
- 						
+if ($post_id_list)
+	error_log(print_r($post_id_list, true));
+
 						$speech = "<speak>Choose a topic.</speak>";
 						$response
 							->respond_ssml( $speech )
 							->with_directives ( 'Dialog.ElicitSlot', 'Keyword')
-							->add_session_attribute('post_ids', $post_ids);
+							->add_session_attribute('post_id_list', $post_id_list);
 
 	 				// ========================================					
  					// Keyword + List of Posts: use the keyword to choose from the list
  					// or if there is no match, do a search.
-					} else if ( $keyword && $post_ids ) {
+					} else if ( $keyword && $post_id_list ) {
 
+						// =========
 						// ORDINAL?
 						// Is the keyword an ordinal ('first'), and the user is choosing from the list
 						// with the ordinal?
-						if ($post_number = $this->is_ordinal() ) {
-							$post_id = $post_ids[$post_number];
-							
-						// LIST?
-						} else {
+						if ($post_number = $this->is_ordinal( $keyword ) ) {
+							$post_id = $post_id_list[$post_number];
+
+error_log("ORDINAL: $keywords ---> $post_id");
 						
+						} else {
+													
+							// =========
+							// LIST?
+
 							// Look for the keyword in the prepared list of posts (related posts)
-							if ($keyword && $post_ids[$keyword] ) {
-								$post_id = $post_ids[$keyword];
+							if ($keyword && !empty($post_id_list[$keyword]) ) {
+								// Found keyword in session post list?
+								$post_id = $post_id_list[$keyword];
+								
 							} else {
-								// Keyword is NOT one of the prepared ones, so we should
-								// search all tags for this keyword.
-								$args = $this->args_for_post_by_tag ( $keyword, $request, $response );
+								// Search all tags for this keyword
+								$args = $this->args_for_post_by_tag ( $keyword, $response, $request, 1 );
 								$posts = get_posts( array_merge( $args, array(
 									'no_found_rows' => true,
 									'post_status' => 'publish',
 								) ) );
 								
-								// Just get the first post (for now)
-								// TO DO: turn this into a list to choose from?
-								$post = $posts[0];
-								$ids = wp_list_pluck( $posts, 'ID' );
-								$response->add_session_attribute("post_id_list", $ids) ;
-
-								$post_id = $post->ID;
+								// Get the first post only
+								$post_id = $posts[0]->ID;
 
 								// For now: error!
 								$this->message( $response, 'unknown_tag_error', $request, $keyword );
@@ -192,18 +197,18 @@ class Explore {
 						}
 
 
-						error_log("------- ReadPostByKeyword : C -------");
-						error_log("next post_id: $post_id");
-						error_log("keyword: $keyword");
+error_log("------- ReadPostByKeyword : B -------");
+error_log("Keyword and Post List exist.");
+error_log("post_id to speak: $post_id");
+error_log("keyword: $keyword");
+error_log("Post found to match keyword: $post_id" );
+error_log("related post ID's:" . print_r($post_id_list, true ) );
 						
 						
 						// Get the post text and the list of related posts to read 
-						if ( ! empty( $post_ids ) && ! empty( $post_number ) ) {
-							$post_id = $this->get_post_id( $post_ids, $post_number );
-							if ( ! $post_id ) {
-								$this->message( $response, 'number_slot_error', $request );
-							} else {
-								$result = $this->endpoint_single_post( $post_id );
+						if (!empty($post_id)) {
+							
+							$result = $this->endpoint_single_post( $post_id );
 							
 							$content = $result['content'];
 
@@ -220,37 +225,52 @@ class Explore {
 									->with_card( $result['title'], '', $result['image'] );
 									// This would end the session!
 									//->end_session();
-							}
+
 						} else {
-							$this->message( $response );
+						
+error_log("Oops, no post id!" );
+
+							$this->message( $response, '', $response );
 						}
 
 
+					// =========
 					// Keyword exists, but no list of posts to choose from,
 					// so use the keyword to find the first tagged post.
 					} else {
 						
 						// search all tags for this keyword, get first post found
-						$args = $this->args_for_post_by_tag ( $keyword, 1 );
+						$args = $this->args_for_post_by_tag ( $keyword, $response, $request, 1 );
 						$posts = get_posts( array_merge( $args, array(
 							'no_found_rows' => true,
 							'post_status' => 'publish',
 						) ) );
-						
+
+
+error_log("------- ReadPostByKeyword : C -------");
+error_log("No list of related posts in session.");
+error_log("keyword: $keyword");
+error_log("posts found to match '$keyword' : " .  print_r(wp_list_pluck($posts, 'ID'), true) );
+
 						if ($posts) {
 							// Just get the first post (for now)
 							// TO DO: turn this into a list to choose from?
-							$post = $posts[0];
 							$ids = wp_list_pluck( $posts, 'ID' );
 							$response->add_session_attribute("post_id_list", $ids) ;
 
+	error_log("related post ID's from session:" . print_r($ids, true ) );
+
+							$post = $posts[0];
 							$post_id = $post->ID;
 							
+							$result = $this->endpoint_single_post( $post_id );
+							
 							$content = $result['content'];
-
-							$related = $this->build_related_posts_text ( $post_id, $request, $response );
-
-							$footer = '<break time="0.5s"/>' . $related;
+							
+					
+							( $related = $this->build_related_posts_text ( $post_id, $request, $response ) )
+							? $footer = '<break time="0.5s"/>' . $related
+							: $footer = '';
 						
 							$speech = $content . $footer;
 							$speech = "<speak>{$speech}</speak>";
@@ -259,6 +279,12 @@ class Explore {
 									->with_card( $result['title'], '', $result['image'] );
 									// This would end the session!
 									//->end_session();
+									
+							if ($post_id_list)
+								$response->add_session_attribute('post_id_list', $post_id_list);
+								
+							if ($related)
+								$response->with_directives ( 'Dialog.ElicitSlot', 'Keyword');
 
 						} else {
 
@@ -291,8 +317,8 @@ class Explore {
 						$post_number = $request->getSlot( 'PostNumber' );
 					}
 
-					if ( ! empty( $request->session->attributes['post_ids'] ) && ! empty( $post_number ) ) {
-						$post_id = $this->get_post_id( $request->session->attributes['post_ids'], $post_number );
+					if ( ! empty( $request->session->attributes['post_id_list'] ) && ! empty( $post_number ) ) {
+						$post_id = $this->get_post_id( $request->session->attributes['post_id_list'], $post_number );
 						if ( ! $post_id ) {
 							$this->message( $response, 'number_slot_error', $request );
 						} else {
@@ -342,7 +368,7 @@ class Explore {
 								//->end_session();
 						}
 					} else {
-						$this->message( $response );
+						$this->message( $response, '', $request );
 					}
 					break;
 					
@@ -355,9 +381,9 @@ class Explore {
 
 					if ($keyword) {
 						// The sessionAttributes have a list of posts
-						$post_ids = $request->session->attributes['post_ids'];
-						$keyword && $post_ids[$keyword] 
-						? $post_id = $post_ids[$keyword] 
+						$post_id_list = $request->session->attributes['post_id_list'];
+						$keyword && $post_id_list[$keyword] 
+						? $post_id = $post_id_list[$keyword] 
 						: $post_id = null;
 
 					// Old concept: get the post ID from the slug, if it exists.
@@ -374,7 +400,7 @@ class Explore {
 					
 						error_log("post_id: $post_id");
 						error_log("keyword: $keyword");
-						error_log(print_r($post_ids, true));
+						error_log(print_r($post_id_list, true));
 						//error_log(print_r($request->session, true));
 						error_log("-------");
  					
@@ -384,7 +410,7 @@ class Explore {
 	 						$response
 								->respond_ssml( $speech )
 								->with_directives ( 'Dialog.ElicitSlot', 'Keyword')
-								->add_session_attribute('post_ids', $post_ids);
+								->add_session_attribute('post_id_list', $post_id_list);
 							break;
  						}
  					}
@@ -444,22 +470,31 @@ class Explore {
 		$pause = '<break time="0.2s"/>';
 		$ids = array();
 		
-		// Build a list from the excerpts, which contain the keyword for the post
-		foreach ($matches[1] as $shortcode) {
-			$page = get_page_by_path( $shortcode, OBJECT, "post" );
+		if ($matches[1]) {
+		
+			// Build a list from the excerpts, which contain the keyword for the post
+			foreach ($matches[1] as $shortcode) {
+				$page = get_page_by_path( $shortcode, OBJECT, "post" );
 
-			//$content = $content . ", $shortcode : " . $post_id . " keyword=". $page->post_excerpt;
-			$related
-			? $related = $related . " or " . $page->post_excerpt . $pause
-			: $related = $page->post_excerpt . $pause;
+				//$content = $content . ", $shortcode : " . $post_id . " keyword=". $page->post_excerpt;
+				$related
+				? $related = $related . " or " . $page->post_excerpt . $pause
+				: $related = $page->post_excerpt . $pause;
 			
-			// Add the ID's as session attributes
-			$ids[$page->post_excerpt] = $page->ID;
+				// Add the ID's as session attributes
+				$ids[strtolower(sanitize_text_field($page->post_excerpt))] = $page->ID;
+			}
+			
+			// Clear session attributes, then add our $ids
+			$response->session_attributes = [];
+			$response->add_session_attribute("post_id_list", $ids) ;
+		
+			$related = "Ask me to say more about {$related}?";
+			
+		} else {
+			// no related posts
+			$related = null;
 		}
-		
-		$response->add_session_attribute("post_id_list", $ids) ;
-		
-		$related = "Ask me to say more about {$related}?";
 		
 		return $related;
 	}
@@ -470,7 +505,7 @@ class Explore {
 	 * @param string $tag name of the tag to search for
 	 * Search for posts with matching tags
 	 */
-	private function args_for_post_by_tag ( $tag, $posts_per_page = 3 ) {
+	private function args_for_post_by_tag ( $tag, $response, $request, $posts_per_page = 3 ) {
 
 		$args = [];
 		
@@ -501,7 +536,7 @@ class Explore {
 			// Search for posts, then return a list of posts for the user to choose from.					
 			$args = array(
 				'post_type' => voicewp_news_post_types(),
-				'posts_per_page' => 3,
+				'posts_per_page' => $posts_per_page,
 			);
 
 			if ( isset( $tax_query ) ) {
@@ -593,7 +628,7 @@ class Explore {
 		$response
 			->respond_ssml( $speech )
 			->with_card( $result['title'], $content, $result['image'] )
-			->add_session_attribute('post_ids', $ids) ;
+			->add_session_attribute('post_id_list', $ids) ;
 	}
 
 
@@ -675,7 +710,7 @@ class Explore {
 		} elseif ( 'number_slot_error' == $case ) {
 			$response
 				->respond( __( 'You can select between one and five, please select an item within that range.', 'voicewp' ) )
-				->add_session_attribute( 'post_ids', $request->session->get_attribute( 'post_ids' ) );
+				->add_session_attribute( 'post_id_list', $request->session->get_attribute( 'post_id_list' ) );
 
 		} elseif ( 'post_id_error' == $case ) {
 			$response
