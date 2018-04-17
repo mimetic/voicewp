@@ -26,6 +26,7 @@ class Explore {
 	
 	private $request;
 	private $response;
+	private $card = "";
 
 	/**
 	 * Figures out what kind of intent we're dealing with from the request
@@ -154,11 +155,15 @@ error_log("No keyword, ask for a keyword (or stop, or next, or yes/no.");
 						// (or choose by ordinal number, e.g. "First"
 						// If there is no match, do a search.
 						// ========================================
+						
+						$index = (int)$this->ordinal_to_integer( $keyword );
+$this->addToCard("index is $index");
+$this->addToCard("count(post_id_list) = " . count($post_id_list) );
+( (int)$index < count($post_id_list) )
+? $this->addToCard(  "YES" )
+: $this->addToCard(  "NO");
 
-error_log("------- ReadPostByKeyword : B : Keyword + List of Posts -------");
-error_log("Related post ID's:  " . implode(", ", $post_id_list ) );
-
-						if ( $index = $this->ordinal_to_integer( $keyword ) ) {
+						if ( $index && ($index < count($post_id_list)) ) {
 						
 							$index = $index - 1;
 	
@@ -168,13 +173,24 @@ error_log("Related post ID's:  " . implode(", ", $post_id_list ) );
 							$post_id = $post_id_list[$keys[$index]];
 
 							error_log ("Keys:" . print_r($keys,true));
-							error_log("ORDINAL: keyword: $keyword, index #".$index);
+							error_log("ORDINAL: keyword: $keyword, index =".$index);
 							error_log("ORDINAL: post_list key = " . $keys[$index]);
 							error_log("post_id = $post_id");
+							
+							$this->addToCard("ORDINAL");
+							$this->addToCard ("Keys:" . implode(" | ", $keys));
+							$this->addToCard("keyword: $keyword, index #".$index);
+							$this->addToCard("post_list key = " . $keys[$index]);
+							$this->addToCard("post_id = $post_id");
+							
+							
 							
 						} else {
 
 							// Keyword is in list of keywords presented to user?
+
+$this->addToCard("Not an ordinal, keyword = $keyword");
+
 							if ( !empty($post_id_list[$keyword]) ) {
 								$post_id = $post_id_list[$keyword];
 							} elseif ("next" == $keyword || "yes" == $keyword) {
@@ -218,24 +234,23 @@ error_log("Related post ID's:  " . implode(", ", $post_id_list ) );
 							$response
 									->respond_ssml( $speech )
 									->with_directives ( 'Dialog.ElicitSlot', 'Keyword')
-									->with_card( print_r($post_id_list, true ) . " --- \n\n" . $related )
+									->with_card( "ReadPostByKeyword : B", $this->card)
 									->add_session_attribute('post_id_list', $post_id_list);
 									//->with_card( $result['title'], '', $result['image'] )
 									// This would end the session!
 									//->end_session();
 
 
-							error_log("Keyword and Post List exist.");
-							error_log("post_id to speak: $post_id");
-							error_log("keyword: $keyword");
-							error_log("Post ID found to match keyword: $post_id" );
-							error_log("related post ID's:" . implode(", ", $post_id_list ) );
-							//$posts && error_log("posts " . print_r($posts, true) );
+							$this->addToCard("Keyword and Post List exist.");
+							$this->addToCard("post_id to speak: $post_id");
+							$this->addToCard("keyword: $keyword");
+							$this->addToCard("Post ID found to match keyword: $post_id" );
+							$this->addToCard("related post ID's:" . implode(", ", $post_id_list ) );
 						
 
 						} else {
 						
-							error_log("Oops, no post id!" );
+							$this->addToCard("Oops, no post id!" );
 
 							$this->message( $response, '', $response );
 						}
@@ -290,9 +305,8 @@ error_log("post list found to match '$keyword' : " . implode(", ", $post_id_list
 								
 							$response
 									->respond_ssml( $speech )
-									->with_card( print_r($post_id_list, true ));
+									->with_card( $this->card);
 									//->with_card( $result['title'], '', $result['image'] )
-									//->with_card( $result['title'], '', $result['image'] );
 									// This would end the session!
 									//->end_session();
 									
@@ -477,17 +491,14 @@ error_log("keyword: " . $keyword);
 	private function ordinal_to_integer ( $t ) {
 		$t = trim(strtolower($t));
 		
-		$digith = array('', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth', 'thirteenth', 'fourteenth', 'fiftheenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth');	
-		$digith2 = array('', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th');
+		$digith = array(false, 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth', 'thirteenth', 'fourteenth', 'fiftheenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth');	
+		$digith2 = array(false, '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th');
 		
-		// Return an ordinal in the form of 1st, 2nd, not first, second
-		if ($i =  array_search($t, $digith) || $i = array_search($t, $digith2)) {
-			$res = $i;
-		} else {
-			$res = false;
-		}
+		array_search($t, $digith)
+		? $i =  array_search($t, $digith)
+		: $i =  array_search($t, $digith2);
 
-		return $res;
+		return $i;
 	}
 
 	/**
@@ -504,6 +515,14 @@ error_log("keyword: " . $keyword);
 		return $ordinal[$n];
 	}
 
+
+	/**
+	 * Add text to the card variable for return to Alexa
+	 * @param string $t Text to add
+	 */
+	private function addToCard ( $t ) {
+		$this->card .= "\n" . $t;
+	}
 
 
 	/**
@@ -919,3 +938,4 @@ error_log (__FUNCTION__);
 		return $result;
 	}
 }
+
