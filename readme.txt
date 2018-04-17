@@ -1,9 +1,9 @@
 === Plugin Name ===
-Contributors: tomharrigan, dlh
+Contributors: tomharrigan, mimetic, dlh
 Tags: Alexa, Amazon, fieldmanager
 Requires at least: 4.4
 Tested up to: 4.7.5
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: MIT
 
 WordPress + Amazon Alexa integration

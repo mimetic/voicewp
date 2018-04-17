@@ -3,9 +3,9 @@
  * Plugin Name: VoiceWP
  * Description: Create Alexa skills using your WordPress site
  * Plugin URI: https://github.com/tomharrigan/
- * Author: TomHarrigan
+ * Author: TomHarrigan, Mimetic
  * Author URI: https://voicewp.com
- * Version: 1.0.0
+ * Version: 1.1.0
  * Text Domain: voicewp
  * License: MIT
  */
