@@ -34,6 +34,9 @@ class Explore {
 	 */
 	public function skill_request( $request, $response ) {
 
+error_log("\n\n");
+error_log("------- " . __FUNCTION__ . "-------");
+
 		if ( $request instanceof \Alexa\Request\IntentRequest ) {
 			$intent = $request->intent_name;
 			$dialog_state = $request->dialog_state;
@@ -111,16 +114,24 @@ class Explore {
 					// Criteria for search exists?
 					$keyword = strtolower( sanitize_text_field( $request->getSlot( 'Keyword' ) ) );
 					
-					isset($request->session->attributes['post_id_list'])
+					//$keyword = $this->get_ordinal($keyword);
+					
+					
+					!empty($request->session->attributes['post_id_list'])
 					? $post_id_list = $request->session->attributes['post_id_list']
 					: $post_id_list = null;
+
+isset($request->session->attributes['post_id_list']) && error_log("------- request->session->attributes -------" . print_r($request->session->attributes['post_id_list'], true) );
+
+					
+					if ( empty($keyword) ) {
+					
 					
 					// ========================================
 					// No keyword
 					// Ask for user response: keyword, stop, next, or yes/no (for 'continue?').
 					// ========================================
-					if ( empty($keyword) ) {
-					
+
 error_log("------- ReadPostByKeyword : A : No Keyword -------");
 error_log("No keyword, ask for a keyword (or stop, or next, or yes/no.");
 
@@ -133,25 +144,34 @@ error_log("No keyword, ask for a keyword (or stop, or next, or yes/no.");
 						$response
 							->respond_ssml( $speech )
 							->with_directives ( 'Dialog.ElicitSlot', 'Keyword')
-							->add_session_attribute('post_id_list', $post_id_list);
+							->add_session_attribute('post_id_list', null);
 
-	 				// ========================================					
- 					// Keyword + List of Posts: use the keyword to choose from the list,
- 					// (or play next, or stop)
- 					// (or choose by ordinal number, e.g. "First"
- 					// If there is no match, do a search.
- 					// ========================================
-					} elseif ( $keyword && $post_id_list ) {
+					} elseif ( $keyword && !empty($post_id_list) ) {
 
-						error_log("------- ReadPostByKeyword : B : Keyword + List of Posts -------");
+						// ========================================					
+						// Keyword + List of Posts: use the keyword to choose from the list,
+						// (or play next, or stop)
+						// (or choose by ordinal number, e.g. "First"
+						// If there is no match, do a search.
+						// ========================================
 
-						if ($post_number = $this->is_ordinal( $keyword ) ) {
+error_log("------- ReadPostByKeyword : B : Keyword + List of Posts -------");
+error_log("Related post ID's:  " . implode(", ", $post_id_list ) );
+
+						if ( $index = $this->ordinal_to_integer( $keyword ) ) {
+						
+							$index = $index - 1;
 	
 							// ORDINAL? Is the keyword an ordinal ('first'), and the user is choosing from the list with the ordinal?
-							$post_id = $post_id_list[$post_number];
+							$keys = array_keys($post_id_list);
+							
+							$post_id = $post_id_list[$keys[$index]];
 
-							error_log("ORDINAL: $keywords ---> $post_id");
-						
+							error_log ("Keys:" . print_r($keys,true));
+							error_log("ORDINAL: keyword: $keyword, index #".$index);
+							error_log("ORDINAL: post_list key = " . $keys[$index]);
+							error_log("post_id = $post_id");
+							
 						} else {
 
 							// Keyword is in list of keywords presented to user?
@@ -180,28 +200,38 @@ error_log("No keyword, ask for a keyword (or stop, or next, or yes/no.");
 						}
 
 
-						error_log("Keyword and Post List exist.");
-						error_log("post_id to speak: $post_id");
-						error_log("keyword: $keyword");
-						error_log("Post ID found to match keyword: $post_id" );
-						error_log("related post ID's:" . implode(", ", $post_id_list ) );
-						$posts && error_log("posts " . print_r($posts, true) );
-						
 						
 						if (!empty($post_id)) {							
 							// Get the post text and the list of related posts to read 
 							$result = $this->endpoint_single_post( $post_id );
 							$content = $result['content'];
+
+							// Get the list of related posts
+							$post_id_list = $this->get_related_post_id_list($post_id);
+							
+							// Create the related posts text to read
 							$related = $this->build_related_posts_text ( $post_id, $request, $response );
+							
 							$footer = '<break time="0.5s"/>' . $related;
 							$speech = $content . $footer;
 							$speech = "<speak>{$speech}</speak>";
 							$response
 									->respond_ssml( $speech )
 									->with_directives ( 'Dialog.ElicitSlot', 'Keyword')
-									->with_card( $result['title'], '', $result['image'] );
+									->with_card( print_r($post_id_list, true ) . " --- \n\n" . $related )
+									->add_session_attribute('post_id_list', $post_id_list);
+									//->with_card( $result['title'], '', $result['image'] )
 									// This would end the session!
 									//->end_session();
+
+
+							error_log("Keyword and Post List exist.");
+							error_log("post_id to speak: $post_id");
+							error_log("keyword: $keyword");
+							error_log("Post ID found to match keyword: $post_id" );
+							error_log("related post ID's:" . implode(", ", $post_id_list ) );
+							//$posts && error_log("posts " . print_r($posts, true) );
+						
 
 						} else {
 						
@@ -232,13 +262,16 @@ error_log("(No list of related posts passed in session variable.)");
 
 							// Just get the first post (for now)
 							// TO DO: turn this into a list to choose from?
-							$post_id_list = wp_list_pluck( $posts, 'ID' );
+
 							$response->add_session_attribute("post_id_list", $post_id_list) ;
+							$post = $posts[0];
+							$post_id = $post->ID;
+
+							$post_id_list = $this->get_related_post_id_list($post_id);
+
 
 error_log("post list found to match '$keyword' : " . implode(", ", $post_id_list ) );
 
-							$post = $posts[0];
-							$post_id = $post->ID;
 							
 							$result = $this->endpoint_single_post( $post_id );
 							
@@ -251,15 +284,18 @@ error_log("post list found to match '$keyword' : " . implode(", ", $post_id_list
 						
 							$speech = $content . $footer;
 							$speech = "<speak>{$speech}</speak>";
-							$response
-									->respond_ssml( $speech )
-									->with_card( $result['title'], '', $result['image'] );
-									// This would end the session!
-									//->end_session();
-									
+
 							if ($post_id_list)
 								$response->add_session_attribute('post_id_list', $post_id_list);
 								
+							$response
+									->respond_ssml( $speech )
+									->with_card( print_r($post_id_list, true ));
+									//->with_card( $result['title'], '', $result['image'] )
+									//->with_card( $result['title'], '', $result['image'] );
+									// This would end the session!
+									//->end_session();
+									
 							if ($related)
 								$response->with_directives ( 'Dialog.ElicitSlot', 'Keyword');
 
@@ -315,13 +351,14 @@ error_log("PostNumberWord: " . $request->getSlot( 'PostNumberWord' ));
 						$post = get_post($post_id);
 						$related_post_html = rp4wp_children( $post_id, false );
 						// This will extract the paths & shortcodes from the urls
-						$p = "/'" . get_site_url() . "\/(.*?)\/'/";
+						$p = "|'" . get_site_url() . "/(.*?)/'>|";
 						preg_match_all($p, $related_post_html, $matches, PREG_PATTERN_ORDER);
 
 						$related = "";
 						$pause = '<break time="0.2s"/>';
-						$post_id_list = array();
 						
+						$post_id_list = $this->get_related_post_id_list($post_id);
+
 						// Build a list from the excerpts, which contain the keyword for the post
 						foreach ($matches[1] as $shortcode) {
 							$page = get_page_by_path( $shortcode, OBJECT, "post" );
@@ -334,7 +371,9 @@ error_log("PostNumberWord: " . $request->getSlot( 'PostNumberWord' ));
 							// Add the ID's as session attributes
 							$post_id_list[$page->post_excerpt] = $page->ID;
 						}
-						
+
+error_log ("From inside of the main code:" . print_r($post_id_list, true));
+
 						$response->add_session_attribute("post_id_list", $post_id_list) ;
 						
 						$related = " Ask me to say more about {$related}?";
@@ -433,22 +472,35 @@ error_log("keyword: " . $keyword);
 	/**
 	 * Is a string an ordinal, e.g. first, tenth
 	 * @param string $tag text that might be an ordinal
-	 * @return boolean Whether the string provided is an ordinal, e.g. "first"
+	 * @return integer|false	e.g. 1st = 1, second = 2
 	 */
-	private function is_ordinal ( $t ) {
-
+	private function ordinal_to_integer ( $t ) {
+		$t = trim(strtolower($t));
+		
 		$digith = array('', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth', 'thirteenth', 'fourteenth', 'fiftheenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth');	
-		return array_search( trim(strtolower($t)), $digith);
+		$digith2 = array('', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th');
+		
+		// Return an ordinal in the form of 1st, 2nd, not first, second
+		if ($i =  array_search($t, $digith) || $i = array_search($t, $digith2)) {
+			$res = $i;
+		} else {
+			$res = false;
+		}
+
+		return $res;
 	}
 
 	/**
-	 * Is a string an ordinal, e.g. first, tenth
+	 * Return the Alexa version of an ordinal number, i.e. 1 => 1st, 2 = 2nd, 3 = 3rd
 	 * @param string $tag text that might be an ordinal
 	 * @return string The text version of a number, e.g. 1 => "first"
 	 */
 	private function get_ordinal ( $n ) {
-
-		$ordinal = array('', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth', 'thirteenth', 'fourteenth', 'fiftheenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth');	
+		$n == "second" && $n = "2nd";
+		$ordinal = array('', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th');
+		
+		//$ordinal = array('', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth', 'thirteenth', 'fourteenth', 'fiftheenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth');
+		
 		return $ordinal[$n];
 	}
 
@@ -503,11 +555,14 @@ error_log("keyword: " . $keyword);
 	 * Search for posts with matching tags
 	 */
 	private function build_related_posts_text ( $post_id, $request, $response ) {
+
+error_log (__FUNCTION__);
+
 		// Depends on the "Related Posts for WordPress" plugin!
 		$post = get_post($post_id);
 		$related_post_html = rp4wp_children( $post_id, false );
 		// This will extract the paths & shortcodes from the urls
-		$p = "/'" . get_site_url() . "\/(.*?)\/'/";
+		$p = "|'" . get_site_url() . "/(.*?)/'>|";
 		preg_match_all($p, $related_post_html, $matches, PREG_PATTERN_ORDER);
 
 		$related = "";
@@ -517,22 +572,32 @@ error_log("keyword: " . $keyword);
 		if ($matches[1]) {
 		
 			// Build a list from the excerpts, which contain the keyword for the post
+			$k = 1;
 			foreach ($matches[1] as $shortcode) {
 				$page = get_page_by_path( $shortcode, OBJECT, "post" );
+				if ($page->post_excerpt) {
+					$post_name = sanitize_text_field($page->post_excerpt);
+				} else {
+					$post_name = $this->get_ordinal($k);
+				}
 
-				//$content = $content . ", $shortcode : " . $post_id . " keyword=". $page->post_excerpt;
 				$related
-				? $related = $related . " or " . $page->post_excerpt . $pause
-				: $related = $page->post_excerpt . $pause;
+				? $related = $related . " or " . $post_name . $pause
+				: $related = $post_name . $pause;
 			
 				// Add the ID's as session attributes
-				$post_id_list[strtolower(sanitize_text_field($page->post_excerpt))] = $page->ID;
+				$post_id_list[strtolower($post_name)] = $page->ID;
+				$k++;
+//error_log( $k-1 . " ( {$this->get_ordinal($k)} ) : $post_name = ID {$page->ID}");
+
 			}
 			
+// error_log(print_r($matches[1], true));
+// error_log(print_r($post_id_list, true));
+// error_log ("-------");
+
 			// Clear session attributes, then add our $post_id_list
-			$response->session_attributes = [];
-			$response->add_session_attribute("post_id_list", $post_id_list) ;
-		
+			$response->add_session_attribute("post_id_list", $post_id_list) ;		
 			$related = " Ask me to say more about {$related}?";
 			
 		} else {
@@ -651,34 +716,58 @@ error_log("keyword: " . $keyword);
 		$post = get_post($post_id);
 		$related_post_html = rp4wp_children( $post_id, false );
 		// This will extract the paths & shortcodes from the urls
-		$p = "/'" . get_site_url() . "\/(.*?)\/'/";
+		$p = "|'" . get_site_url() . "/(.*?)/'>|";
 		preg_match_all($p, $related_post_html, $matches, PREG_PATTERN_ORDER);
 
-		$related = array();
-		$pause = '<break time="0.2s"/>';
-		
-		$k = 1;
-		foreach ($matches[1] as $shortcode) {
-			$page = get_page_by_path( $shortcode, OBJECT, "post" );
-			$t = sanitize_text_field($page->post_excerpt) || $t = $this->get_ordinal($k);
-			$page->post_excerpt && $related[] = $t;
-			// Add the ID's as session attributes
-			$post_id_list[strtolower($t)] = $page->ID;
-			$k++;
-		}
-		$related = implode( "$pause or ", $related);
+		$related = $this->build_related_posts_text ( $post_id, $request, $response );
 		$related ? $footer = '<break time="0.5s"/>' . " Ask me to say more about {$related}?" : $footer = "";
 
 		$speech = $content . $footer;
-		
 		$this->speech = $speech;
-
 		$speech = "<speak>{$speech}</speak>";
-		
+
 		$response
 			->respond_ssml( $speech )
 			->with_card( $result['title'], $content, $result['image'] )
 			->add_session_attribute('post_id_list', $post_id_list) ;
+	}
+
+
+
+
+	/**
+	 * Gets formatted post data given the post ID
+	 * Set the responce from the post information, e.g. text to speak, card info, etc.
+	 * @param int $id ID of post to get data for
+	 * @return array Data from the post being returned
+	 */
+	private function get_related_post_id_list ( $post_id ) {
+
+		// Depends on the "Related Posts for WordPress" plugin!
+		$post = get_post($post_id);
+		$related_post_html = rp4wp_children( $post_id, false );
+
+		// This will extract the paths & shortcodes from the urls
+		$p = "|'" . get_site_url() . "/(.*?)/'>|";
+		preg_match_all($p, $related_post_html, $matches, PREG_PATTERN_ORDER);
+
+		$k = 1;
+		$post_id_list = array();
+		foreach ($matches[1] as $shortcode) {
+			$page = get_page_by_path( $shortcode, OBJECT, "post" );
+			if ($page->post_excerpt) {
+				$post_name = sanitize_text_field($page->post_excerpt);
+			} else {
+				// return 1,2,3, etc. as a string because some languages don't keep orders of arrays
+				// and if someone were to translate this logic, it would break on numeric indices.
+				$post_name = strval($k);
+			}
+
+			$post_id_list[strtolower($post_name)] = $page->ID;
+			$k++;
+		}
+		
+		return $post_id_list;
 	}
 
 
