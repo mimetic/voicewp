@@ -255,6 +255,12 @@ function voicewp_fm_alexa_settings() {
 			'default_value' => __( "{put your skill name here} provides you with the latest content from {your site name}. You can ask me for the latest articles, and then select an item from the list by saying, for example, 'read the 3rd article' Or you can also say exit... What can I help you with?", 'voicewp' ),
 			'attributes' => array( 'style' => 'width: 95%; height: 70px;' ),
 		) ),
+		'fallback_intent' => new Fieldmanager_TextArea( array(
+			'label' => __( 'Help message', 'voicewp' ),
+			'description' => __( "This is the message a person hears when Alexa does not understand.", 'voicewp' ),
+			'default_value' => __( "Sorry, I did not understand.", 'voicewp' ),
+			'attributes' => array( 'style' => 'width: 95%; height: 70px;' ),
+		) ),
 		'list_prompt' => new Fieldmanager_TextArea( array(
 			'label' => __( 'List Prompt', 'voicewp' ),
 			'description' => __( 'This message prompts the user to select a piece of content to be read after hearing the headlines.', 'voicewp' ),

@@ -84,6 +84,7 @@ class Response {
 			$this->card = new Card( $title, $content );
 		}
 
+		// allows chaining
 		return $this;
 	}
 
@@ -95,6 +96,7 @@ class Response {
 	public function end_session( $should_end_session = true ) {
 		$this->should_end_session = $should_end_session;
 
+		// allows chaining
 		return $this;
 	}
 
@@ -105,13 +107,16 @@ class Response {
 	 */
 	public function add_session_attribute( $key, $value ) {
 		$this->session_attributes[ $key ] = $value;
+		
+		// allows chaining
+		return $this;
 	}
 
 
 	/**
-	 * Add a session attribute that will be passed in every requests.
-	 * @param string $key
-	 * @param mixed $value
+	 * Add a directive.
+	 * @param string $type
+	 * @param string $slot_to_elicit
 	 */
 
 
